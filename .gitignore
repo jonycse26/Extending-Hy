@@ -1,3 +1,9 @@
-.idea
+*.iml
+.idea/
+dist/
+*.egg-info
 *.pyc
-dev_testing/
+temp/
+.coverage
+htmlcov/
+temp_*/

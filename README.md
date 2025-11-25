@@ -1,107 +1,235 @@
-# Hypatia
+# satgenpy: Satellite network generation
 
-Hypatia is a low earth orbit (LEO) satellite network simulation framework. It pre-calculates network state over time, enables packet-level simulations using ns-3 and provides visualizations to aid understanding.
+The following five things need to be generated to analyze / simulate a LEO satellite network:
 
-<a href="#"><img alt="Kuiper side-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Kuiper_side_view.png" width="20%" /></a>
-<a href="#"><img alt="Telesat top-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Telesat_top_view.png" width="20%" /></a>
-<a href="#"><img alt="starlink_paris_luanda_short" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/starlink_paris_luanda_short.png" width="10%" /></a>
+1. `ground_stations.txt` : Describing the ground station properties and locations
+2. `tles.txt` : TLEs describing the orbit of all satellites
+3. `isls.txt` : Topology of the inter-satellite links
+4. `gsl_interfaces_info.txt` : Number of ground-to-satellite link (GSL) interfaces per each node (both satellites and ground stations)
+5. `description.txt` : Descriptive information (in particular, max. ISL / GSL length)
+6. `dynamic_state/` : Dynamic state which encompasses (a) forwarding state (fstate) and (b) gsl interface bandwidth (gsl_if_bandwidth)
 
-It consists of four main components:
-
-* `satgenpy` : Python framework to generate LEO satellite networks and generate 
-  routing over time over a period of time. It additionally includes several 
-  analysis tools to study individual cases. It makes use of several Python modules
-  among which: numpy, astropy, ephem, networkx, sgp4, geopy, matplotlib, 
-  statsmodels, cartopy (and its dependent (data) packages: libproj-dev, proj-data,
-  proj-bin, libgeos-dev), and exputil.
-  More information can be found in `satgenpy/README.md`.
-  (license: MIT)
-
-* `ns3-sat-sim` : ns-3 based framework which takes as input the state generated 
-  by `satgenpy` to perform packet-level simulations over LEO satellite networks.
-  It makes use of the [`satellite`](https://gitlab.inesctec.pt/pmms/ns3-satellite)
-  ns-3 module by Pedro Silva to calculate satellite locations over time.
-  It uses the [`basic-sim`](https://github.com/snkas/basic-sim/tree/3b32597c183e1039be7f0bede17d36d354696776) 
-  ns-3 module to make e.g., running end-to-end TCP flows easier, which makes use of several Python
-  modules (e.g., numpy, statsmodels, exputil) as well as several other packages (e.g., OpenMPI, lcov, gnuplot).
-  More information can be found in `ns3-sat-sim/README.md`.
-  (license: GNU GPL version 2)
-  
-* `satviz` : Cesium visualization pipeline to generate interactive satellite network
-  visualizations. It makes use of the online Cesium API by generating CesiumJS code.
-  The API calls require its user to obtain a Cesium access token (via [https://cesium.com/]()).
-  More information can be found in `satviz/README.md`.
-  (license: MIT)
-
-* `paper` : Experimental and plotting code to reproduce the experiments and 
-  figures which are presented in the paper.
-  It makes use of several Python modules among which: satgenpy, numpy, networkload, and exputil.
-  It uses the gnuplot package for most of its plotting.
-  More information can be found in `paper/README.md`.
-  (license: MIT)
-  
-(there is a fifth folder called `integration_tests` which is used for integration testing purposes)
-
-This is the code repository introduced and used in "Exploring the “Internet from space” with Hypatia" 
-by Simon Kassing*, Debopam Bhattacherjee*, André Baptista Águas, Jens Eirik Saethre and Ankit Singla
-(*equal contribution), which is published in the Internet Measurement Conference (IMC) 2020.
-
-BibTeX citation:
-```
-@inproceedings {hypatia,
-    author = {Kassing, Simon and Bhattacherjee, Debopam and Águas, André Baptista and Saethre, Jens Eirik and Singla, Ankit},
-    title = {{Exploring the “Internet from space” with Hypatia}},
-    booktitle = {{ACM IMC}},
-    year = {2020}
-}
-```
+This repository enables you to do so.
 
 ## Getting started
 
-1. System setup:
-   - Python version 3.7+
-   - Recent Linux operating system (e.g., Ubuntu 18+)
+1. Python 3.7+
 
-2. Install dependencies:
+2. The following dependencies need to be installed:
+
    ```
-   bash hypatia_install_dependencies.sh
-   ```
-   
-3. Build all four modules (as far as possible):
-   ```
-   bash hypatia_build.sh
-   ```
-   
-4. Run tests:
-   ```
-   bash hypatia_run_tests.sh
+   pip install numpy astropy ephem networkx sgp4 geopy matplotlib statsmodels
+   sudo apt-get install libproj-dev proj-data proj-bin libgeos-dev
+   pip install cartopy
+   pip install git+https://github.com/snkas/exputilpy.git@v1.6
    ```
 
-5. The reproduction of the paper is essentially the tutorial for Hypatia.
-   Please navigate to `paper/README.md`.
+## Dynamic state algorithms
 
-### Visualizations
-Most of the visualizations in the paper are available [here](https://leosatsim.github.io/).
-All of the visualizations can be regenerated using scripts available in `satviz` as discussed above.
+There are currently three dynamic state algorithms implemented:
 
-Below are some examples of visualizations:
+* `algorithm_free_one_only_over_isls` : Only runs for scenarios where there are ISLs.
+  It calculates the shortest paths from each ground station / satellite to every ground
+  station. It only uses paths which are GS-(SAT)+-GS (in other words, no ground
+  station relays). Ground stations and satellites have exactly one interface which
+  does not change bandwidth. This interface can send to any other GSL interface ("free").
+  
+* `algorithm_free_one_only_gs_relays` : Only runs for scenarios where there are no ISLs.
+  It calculates the shortest paths from each ground station / satellite to every ground
+  station. It only uses paths which are GS-SAT-(GS-SAT)+-GS (in other words, only ground
+  station relays). Ground stations and satellites have exactly one interface which
+  does not change bandwidth. This interface can send to any other GSL interface ("free").
+  
+* `algorithm_free_gs_one_sat_many_only_over_isls` : Only runs for scenarios where there are ISLs.
+  It calculates the shortest paths from each ground station / satellite to every ground
+  station. It only uses paths which are GS-(SAT)+-GS (in other words, no ground
+  station relays). Ground stations have exactly one GSL interface which
+  does not change bandwidth, and satellites have `# of ground stations` GSL interfaces.
+  Importantly, if the satellite sends to a specific ground
+  station, it sends from the specific interface on it allocated for that ground station.
+  This means that if a satellite is used to reach two ground stations, they will not 
+  be bottlenecked by the satellite GSL interface.
+  
+* `algorithm_paired_many_over_isls` : Only runs for scenarios where there are ISLs.
+   It calculates the shortest paths from each ground station / satellite to every ground
+   station. It only uses paths which are GS-(SAT)+-GS (in other words, no ground
+   station relays). Ground stations have one interface, satellites have 
+   `# of ground stations` interfaces. Each ground station interface is bound to the 
+   nearest satellite interface (at its index), and only sends there. Bandwidth
+   is allocated on both sides based on the number of ground station the satellite connects to.
+   (WARNING: THIS IS STILL IN EARLY DEVELOPMENT STAGE)
+  
 
-- SpaceX Starlink 5-shell side-view (left) and top-view (right). To know the configuration of the shells, click [here](https://leosatsim.github.io/).
+## File formats
 
-  <a href="#"><img alt="Starlink side-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Starlink_side_view.png" width="45%" /></a>
-  <a href="#"><img alt="Starlink top-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Starlink_top_view.png" width="45%" /></a>
+### Ground stations
 
-- Amazon Kuiper 3-shell side-view (left) and top-view (right). To know the configuration of the shells, click [here](https://leosatsim.github.io/kuiper.html).
+A comma-separated file describing the ground stations.
 
-  <a href="#"><img alt="Kuiper side-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Kuiper_side_view.png" width="45%" /></a>
-  <a href="#"><img alt="Kuiper top-view" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/Kuiper_top_view.png" width="45%" /></a>
+**Line format for non-extended (without position): ground_stations.basic.txt**
 
-- RTT changes over time between Paris and Luanda over Starlink 1st shell. Left: 117 ms, Right: 85 ms. Click on the images for 3D interactive visualizations.
+```
+[id: int],[name: string],[latitude: float],[longitude: float],[elevation: float]
+```
 
-  <a href="https://leosatsim.github.io/starlink_550_path_Paris_1608_Luanda_1650_46800.html"><img alt="starlink_paris_luanda_long" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/starlink_paris_luanda_long.png" width="35%" /></a>
-  <a href="https://leosatsim.github.io/starlink_550_path_Paris_1608_Luanda_1650_139900.html"><img alt="starlink_paris_luanda_short" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/starlink_paris_luanda_short.png" width="35%" /></a>
+**Example:**
 
-- Link utilizations change over time, even with the input traffic being static. For Kuiper 1st shell, path between Chicago and Zhengzhou at 10s (top) and 150s (bottom). Click on the images for 3D interactive visualizations.
+```
+0,City: Tokyo; Country: Japan,35.6895,139.69171,0.0
+1,City: Delhi; Country: India,28.66667,77.21667,0.0
+```
 
-  <a href="https://leosatsim.github.io/kuiper_630_path_wise_util_Chicago_1193_Zhengzhou_1243_10000.html"><img alt="kuiper_Chicago_Zhengzhou_10s" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/kuiper_Chicago_Zhengzhou_10s.png" width="90%" /></a>
-  <a href="https://leosatsim.github.io/kuiper_630_path_wise_util_Chicago_1193_Zhengzhou_1243_150000.html"><img alt="kuiper_Chicago_Zhengzhou_150s" src="https://raw.githubusercontent.com/leosatsim/leosatsim.github.io/master/images/kuiper_Chicago_Zhengzhou_150s.png" width="90%" /></a>
+**Line format for extended (with position): ground_stations.txt**
+
+```
+[id: int],[name: string],[latitude: float],[longitude: float],[elevation: float],[x cartesian: float],[y cartesian: float],[z cartesian: float]
+```
+
+**Example:**
+
+```
+0,Tokyo,Japan,37875.951,0.915,35.6895,139.69171,0.0,-3954844.87446858,3354936.24256892,3700264.78797276,0
+```
+
+
+**Notes:**
+ * ID needs to be incrementally increased by 1
+ * The node ids of the ground stations are assigned after the satellite, so if 
+   there are 625 satellites, the first ground station has node ID 625 (but of 
+   course ground station id of 0)
+
+### Satellite orbits: tles.txt
+
+This file contains the positions of satellites.
+
+**Format:**
+
+* The first line should contain the number of orbits and the number of satellites per orbit, 
+  separated by a space.
+* Subsequently, each satellite is described in four lines:
+
+    (1-3) The first three lines define its orbit using the Two-line Element Set Coordinate System:
+    
+     https://spaceflight.nasa.gov/realdata/sightings/SSapplications/Post/JavaSSOP/SSOP_Help/tle_def.html
+
+**Example:**
+
+```
+1 1
+Starlink 0
+1 00001U 19029BR  18161.59692852  .00001103  00000-0  33518-4 0  9994
+2 00001 53.00000   0.7036 0003481 299.7327   0.3331 15.05527065  1773
+```
+
+**Notes:**
+ - Independent of the name, the satellite ids will be set according to the file's order, starting from 0
+ - All satellites should have the same epoch
+
+### Satellite topology: isls.txt
+
+This file contains the inter-satellite links. These links remain in place for the entire simulation.
+
+**Format:**
+
+Each satellite is described in a line consisting of two `int`, the ids of the two satellites that share a link.
+
+```
+[from_1] [to_1]
+[from_2] [to_2]
+...
+[from_n] [to_n]
+```
+
+**Example:**
+
+```
+0 1
+0 2
+1 2
+```
+
+### GSL interfaces info: gsl_interfaces_info.txt
+
+This file contains how many GSLs each node has, and the maximum aggregate bandwidth they can have.
+
+**Format:**
+
+```
+[node id],[number of GSL interfaces],[max. aggregate bandwidth]
+```
+
+**Example:**
+
+```
+329,5,2.0
+```
+
+Translates to: node 329 has 5 interfaces which can have an aggregate bandwidth of at most 2.0
+
+### Description: description.txt
+
+This file contains some handy description properties.
+
+**Format:**
+
+```
+max_gsl_length_m=<float>
+max_isl_length_m=<float>
+```
+
+**Example:**
+
+```
+max_gsl_length_m=1089686.0000000000
+max_isl_length_m=1000000000.0000000000
+```
+
+### Forwarding state: dynamic_state/
+
+This directory contains all the dynamic state, which means state which changes over time
+
+#### Forwarding state (fstate)
+
+**Format:**
+
+Each file is named as `fstate_[time in nanoseconds].txt`. Its format is as follows:
+
+```
+[current],[dest],[next-hop],[current-interface-id],[next-hop-interface-id]
+[current],[dest],[next-hop],[current-interface-id],[next-hop-interface-id]
+...
+[current],[dest],[next-hop],[current-interface-id],[next-hop-interface-id]
+```
+
+**Example:**
+
+```
+301,992,340,3,5
+```
+
+Translates to: a packet at node 301 destined for 992 will be sent to 340. Node 301 will enqueue it in interface 3 and will send it to the interface 5 of node 340.
+
+**Notes:**
+
+* Only from satellites and ground station node ids as current to the ground stations is encoded in the forwarding state, because satellite are never the destination of a packet during the simulation.
+
+#### GSL interface bandwidth (gsl_if_bandwidth)
+
+**Format:**
+
+Each file is named as `gsl_if_bandwidth_[time in nanoseconds].txt`. Its format is as follows:
+
+```
+[node],[interface-id],[bandwidth (unitless)]
+[node],[interface-id],[bandwidth (unitless)]
+...
+[node],[interface-id],[bandwidth (unitless)]
+```
+
+**Example:**
+
+```
+145,1,0.4
+```
+
+Translates to: interface 1 on node 145 has a bandwidth of 0.4
